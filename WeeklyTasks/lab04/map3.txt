@@ -1,0 +1,8 @@
+# map3.txt - U-Shaped Obstacle Test
+10 5
+0 49
+. . . . . . . . . .
+. . X X X X X X . .
+. . X . . . . X . .
+. . X . . . . X . .
+. . . . . . . . . .
