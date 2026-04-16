@@ -1,0 +1,8 @@
+# map4.txt - Terrain Cost Challenge
+10 5
+0 49
+. . . . . . . . . .
+. . m m m m m m . .
+. . m ~ ~ ~ ~ m . .
+. . m ~ X X ~ m . .
+. . . . . . . . . .
