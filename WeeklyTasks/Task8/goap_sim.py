@@ -1,4 +1,3 @@
-
 class WorldState:
     
     def __init__(self, **kwargs):
@@ -16,6 +15,13 @@ class WorldState:
     def has(self, **conditions):
         for key, needed in conditions.items():
             if self.facts.get(key, 0) < needed:
+                return False
+        return True
+    
+    def goal_achieved(self, **goals):
+        """Check if goal conditions are met. Goals use 'at most' logic (e.g., hunger <= 0)."""
+        for key, target in goals.items():
+            if self.facts.get(key, 0) > target:
                 return False
         return True
     
@@ -138,7 +144,7 @@ class Planner:
         while thoughts_to_explore:
             current_thought = thoughts_to_explore.pop(0)
             
-            if current_thought.situation.has(**trying_to_achieve):
+            if current_thought.situation.goal_achieved(**trying_to_achieve):
                 return self._trace_back_plan(current_thought)
             
             situation_id = str(current_thought.situation.facts)
@@ -243,14 +249,89 @@ class Agent:
                 status.append(f"thirst at {thirst}")
             
             if status:
-                print(f"  Done. Now: {', '.join(status)}")
+                print(f"Done. Now: {', '.join(status)}")
             else:
-                print(f"  Done. Feeling good!")
+                print(f"Done. Feeling good!")
             
             self.currently_doing = None
         
         return True
 # finish and add a demo
+
+def run_demo():
+    print ("Lets follow Bob through a day")
+
+    actions = available_actions()
+
+    print ("Morning...")
+    morning = WorldState(
+        hunger = 20,
+        thirst = 20,
+        fatigue = 20,
+        food = 0,
+        water = 0,
+        money = 20,
+        at_home = True
+        )
+    bob = Agent("Bob", morning, actions)
+    print(f"Bob wakes up. He's hungry, a bit thirsty, and has $20 in his pocket.")
+    print(f"The fridge is empty though.")
+    
+    bob.set_new_goal({"hunger": 0})
+    
+    step = 0
+    while bob.take_action() and step < 30:
+        step += 1
+    
+
+    print("\n\nAfternoon...")
+    
+    afternoon = WorldState(
+        hunger=30,
+        thirst=25,
+        fatigue=35,
+        food=1,
+        water=0,
+        money=2,
+        at_home=True
+    )
+    
+    bob = Agent("Bob", afternoon, actions)
+    print(f"It's been a few hours. Bob has some food left but he's tired and getting thirsty.")
+    print(f"He's also running low on cash, only $2 left.")
+    
+    bob.set_new_goal({"hunger": 0, "fatigue": 0})
+    
+    step = 0
+    while bob.take_action() and step < 30:
+        step += 1
+
+    print("\n\nEvening...")
+    
+    evening = WorldState(
+        hunger=50,
+        food=0,
+        money=10,
+        fatigue=10,
+        at_home=True
+    )
+    
+    bob = Agent("Bob", evening, actions)
+    print(f"Dinner time and Bob is really hungry. No food in the house.")
+    print(f"He's got $10 and feels pretty energetic.")
+    print(f"He could go buy food at the shop, or forage in the woods for free.")
+    print(f"Buying is quick but costs money. Foraging is free but exhausting.")
+    print(f"Let's see what he chooses...")
+    
+    bob.set_new_goal({"hunger": 0})
+    
+    step = 0
+    while bob.take_action() and step < 30:
+        step += 1
+    
+    print("\n\nEnd of the day. Bob heads to bed.")
+
+
 
 if __name__ == "__main__":
     run_demo()
