@@ -10,7 +10,7 @@ class Tactical(object):
 		# defensive moment
 		for fleet in gameinfo._enemy_fleets().values():
 			if fleet.dest.ID in my:
-				# detect when a my plante is under attack
+				# detect when a my planet is under attack
 				dest = fleet.dest
 				src = min(my.values(), key=lambda p: p.distance_to(dest))
 				if src.ships > 10 and src.ID != dest.ID:
