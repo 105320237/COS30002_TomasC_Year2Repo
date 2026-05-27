@@ -63,7 +63,12 @@ class Agent(object):
         self.accel = Vector2D()
         self.max_speed = 20.0 * scale
         self.friction = 0.98
-        self.max_force = 100.0
+        self.max_force = 100.0 * scale
+
+        self.wander_target = Vector2D(1, 0)
+        self.wander_dist = 2.0 * scale
+        self.wander_radius = 1.5 * scale
+        self.wander_jitter = 15.0
 
         # ---- Graphical Representation ----
         self.color = 'ORANGE'
@@ -73,16 +78,7 @@ class Agent(object):
             Point2D( 10,  0),
             Point2D(-10, -6)
         ]
-        self._create_vehicle()
-        
-        # Main vehicle primitive
-        self.vehicle = pyglet.shapes.Triangle(
-            self.pos.x + self.vehicle_shape[1].x, self.pos.y + self.vehicle_shape[1].y,
-            self.pos.x + self.vehicle_shape[0].x, self.pos.y + self.vehicle_shape[0].y,
-            self.pos.x + self.vehicle_shape[2].x, self.pos.y + self.vehicle_shape[2].y,
-            color=COLOUR_NAMES[self.color],
-            batch=window.get_batch("main")
-        )
+        self.create_vehicle()
 
         # ---- Debug/Info Visuals ----
         # Wander logic visuals (placeholders)
@@ -96,13 +92,17 @@ class Agent(object):
             ArrowLine(Vector2D(0,0), Vector2D(0,0), colour=COLOUR_NAMES['GREY'], batch=window.get_batch("info")),
             ArrowLine(Vector2D(0,0), Vector2D(0,0), colour=COLOUR_NAMES['GREY'], batch=window.get_batch("info")),
         ]
-
-        self.wander_target = Vector2D(1, 0)
-        self.wander_dist = 2.0 * scale
-        self.wander_radius = 1.5 * scale
-        self.wander_jitter = 15.0
-
-        self.max_force = 100.0 * scale
+        # Main vehicle primitive
+    def create_vehicle(self):
+        self.vehicle = pyglet.shapes.Triangle(
+            self.pos.x + self.vehicle_shape[1].x, self.pos.y + self.vehicle_shape[1].y,
+            self.pos.x + self.vehicle_shape[0].x, self.pos.y + self.vehicle_shape[0].y,
+            self.pos.x + self.vehicle_shape[2].x, self.pos.y + self.vehicle_shape[2].y,
+            color=COLOUR_NAMES[self.color],
+            batch=window.get_batch("main")
+        )
+    def update_vehicle_color(self):
+        self.create_vehicle()
 
     def calculate(self, delta):
         """Calculates the accumulated steering force based on the current mode."""
@@ -236,3 +236,22 @@ class Agent(object):
         return spots
     
     def find_best_hiding_spot(self, hunter_pos, obstacles):
+        spots = self.calculate_hiding_spots(hunter_pos, obstacles)
+        if not spots:
+            return None
+        best_spots = None
+        best_dist = float('inf')
+        for spot in spots:
+            d = self.pos.distance(spot)
+            if d < best_dist:
+                best_dist = d
+                best_spots = spot
+        return best_spots
+    
+    def hide(self):
+        if self.world.hunter is None:
+            return Vector2D()
+        best_spot = self.find_best_hiding_spot(self.world.hunter.pos, self.world.obstacles)
+        if best_spot:
+            return self.arrive(best_spot, 'normal')
+        return Vector2D()

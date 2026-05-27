@@ -26,10 +26,24 @@ class Game():
 
     def __init__(self):
         # Initialise the world based on the window size
+        #hunter and prey setup
         self.world = World(window.width, window.height)
-        
-        # Add a single agent to the world for the student to observe
-        self.world.agents.append(Agent(self.world))
+        hunter = Agent(self.world, scale = 35.0, mass = 2.0, mode = 'wander')
+        hunter.color = 'RED'
+        hunter.max_speed = 15.0 * hunter.scale.x
+        hunter.max_force = 80.0 * hunter.scale.x
+        hunter.update_vehicle_color()
+        self.world.agents.append(hunter)
+
+
+        prey = Agent(self.world, scale = 20.0, mass = 0.8, mode = 'hide')
+        prey.color = 'GREEN'
+        prey.max_speed = 30.0 * prey.scale.x
+        prey.max_force = 150.0 * prey.scale.x
+        prey.update_vehicle_color()
+        self.world.agents.append(prey)
+
+        self.world.hunter = hunter
         
         # Ensure the world is active upon startup
         self.world.paused = False
