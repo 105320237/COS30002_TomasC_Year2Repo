@@ -1,10 +1,4 @@
-"""Autonomous Agent Steering Logic.
-
-This module defines the Agent class, which implements various steering 
-behaviours such as Seek, Flee, Arrive, and placeholders for Pursuit, 
-Wander, and Path Following. It handles the physics integration (force -> 
-acceleration -> velocity -> position) and updates the graphical representation.
-
+"""
 Created by
     Clinton Woodward (2019)
     James Bonner (2024)
@@ -21,7 +15,6 @@ from vector2d import Vector2D, Point2D
 from graphics import COLOUR_NAMES, window, ArrowLine
 from math import sin, cos, radians
 from random import random, randrange, uniform
-from path import Path
 
 # Mapping of keyboard keys to steering modes
 AGENT_MODES = {
@@ -30,9 +23,8 @@ AGENT_MODES = {
     pyglet.window.key._3: 'arrive_normal',
     pyglet.window.key._4: 'arrive_fast',
     pyglet.window.key._5: 'flee',
-    pyglet.window.key._6: 'pursuit',
-    pyglet.window.key._7: 'follow_path',
     pyglet.window.key._8: 'wander',
+    pyglet.window.key._0: 'flock',
 }
 
 class Agent(object):
@@ -53,7 +45,9 @@ class Agent(object):
         # Physics state: position, velocity, and orientation
         angle = radians(random() * 360)
         self.pos = Vector2D(randrange(world.cx), randrange(world.cy))
-        self.vel = Vector2D()
+        self.vel = Vector2D(uniform(-1, 1), uniform(-1, 1))
+        self.vel.normalise()
+        self.vel *= 50.0
         self.heading = Vector2D(sin(angle), cos(angle))
         self.side = self.heading.perp()
         self.scale = Vector2D(scale, scale)
@@ -64,7 +58,22 @@ class Agent(object):
         self.accel = Vector2D()
         self.max_speed = 20.0 * scale
         self.friction = 0.98
-        # self.max_force = 100.0 # Example limit
+        self.max_force = 100.0 * scale
+
+        #Flock details
+        self.w_cohesion = 1.0
+        self.w_alignment = 1.0
+        self.w_separation = 1.5
+        self.w_wander = 0.5
+
+        self.neighbour_radius = 150.0
+        self.separation_distance = 40.0
+
+        #Wander details
+        self.wander_target = Vector2D(1, 0)
+        self.wander_dist = 2.0 * scale
+        self.wander_radius = 1.5 * scale
+        self.wander_jitter = 15.0
 
         # ---- Graphical Representation ----
         self.color = 'ORANGE'
@@ -74,15 +83,7 @@ class Agent(object):
             Point2D( 10,  0),
             Point2D(-10, -6)
         ]
-        
-        # Main vehicle primitive
-        self.vehicle = pyglet.shapes.Triangle(
-            self.pos.x + self.vehicle_shape[1].x, self.pos.y + self.vehicle_shape[1].y,
-            self.pos.x + self.vehicle_shape[0].x, self.pos.y + self.vehicle_shape[0].y,
-            self.pos.x + self.vehicle_shape[2].x, self.pos.y + self.vehicle_shape[2].y,
-            color=COLOUR_NAMES[self.color],
-            batch=window.get_batch("main")
-        )
+        self._create_vehicle()
 
         # ---- Debug/Info Visuals ----
         # Wander logic visuals (placeholders)
@@ -97,17 +98,28 @@ class Agent(object):
             ArrowLine(Vector2D(0,0), Vector2D(0,0), colour=COLOUR_NAMES['GREY'], batch=window.get_batch("info")),
         ]
 
-        ### STUDENT TODO: Initialise path and wander details here
-        self.path = Path()
-        self.randomise_path()
-        self.waypoint_threshold = 20.0
+    def _create_vehicle(self):
+        self.vehicle = pyglet.shapes.Triangle(
+            self.pos.x + self.vehicle_shape[1].x,
+            self.pos.y + self.vehicle_shape[1].y,
+            self.pos.x + self.vehicle_shape[0].x,
+            self.pos.y + self.vehicle_shape[0].y,
+            self.pos.x + self.vehicle_shape[2].x,
+            self.pos.y + self.vehicle_shape[2].y,
+            color=COLOUR_NAMES[self.color],
+            batch=window.get_batch("main")
+        )
+    def _update_vehicle_color(self):
+        self._create_vehicle()
 
-        self.wander_target = Vector2D(1, 0)
-        self.wander_dist = 2.0 * scale
-        self.wander_radius = 1.5 * scale
-        self.wander_jitter = 15.0
-
-        self.max_force = 100.0 * scale
+    def get_neighbours(self):
+        neighbours = []
+        for agent in self.world.agents:
+            if agent is self:
+                continue
+            if self.pos.distance(agent.pos) < self.neighbour_radius:
+                neighbours.append(agent)
+        return neighbours
 
     def calculate(self, delta):
         """Calculates the accumulated steering force based on the current mode."""
@@ -124,12 +136,10 @@ class Agent(object):
             force = self.arrive(target_pos, 'fast')
         elif mode == 'flee':
             force = self.flee(target_pos)
-        elif mode == 'pursuit':
-            force = self.pursuit(self.world.hunter)
         elif mode == 'wander':
             force = self.wander(delta)
-        elif mode == 'follow_path':
-            force = self.follow_path()
+        elif mode == 'flock':
+            force = self.flock(delta)
         else:
             force = Vector2D()
             
@@ -140,7 +150,7 @@ class Agent(object):
         """Updates the agent's physics and graphical representation."""
         # 1. Calculate steering force
         force = self.calculate(delta)
-        
+        force.truncate(self.max_force)
         # 2. Integrate physics: F = ma -> a = F/m
         self.accel = force / self.mass
         
@@ -180,14 +190,6 @@ class Agent(object):
         self.info_net_vectors[1].position = self.pos
         self.info_net_vectors[1].end_pos = self.pos + (self.force + self.vel) * s
 
-    def speed(self):
-        return self.vel.length()
-    
-    def randomise_path(self):
-        cx, cy = self.world.cx, self.world.cy
-        margin = min(cx, cy) * (1/6)
-        self.path.create_random_path(5, margin, margin, cx - margin, cy - margin, looped=True)
-
     # ---- Steering Behaviour Implementations ----
 
     def seek(self, target_pos):
@@ -216,17 +218,6 @@ class Agent(object):
             return (desired_vel - self.vel)
         return Vector2D(0, 0)
 
-    def pursuit(self, evader):
-        """Predicts an evader's future position and seeks towards it."""
-        if evader is None:
-            return Vector2D()
-    
-        to_evader = evader.pos - self.pos
-        distance = to_evader.length()
-        prediction_time = distance / self.max_speed
-        future_pos = evader.pos + evader.vel * prediction_time
-        return self.seek(future_pos)
-
     def wander(self, delta):
             """Randomly jitters a projected circle to produce organic movement."""
             jitter = self.wander_jitter * delta
@@ -244,12 +235,53 @@ class Agent(object):
             self.info_wander_circle.y = circle_center.y
             self.info_wander_circle.radius = self.wander_radius
             return self.seek(world_target)
+    
+    # ---- Flock ----
 
-    def follow_path(self):
-        """Moves the agent along a predefined set of waypoints."""
-        if self.path.is_finished():
-            return self.arrive(self.path.current_pt(), 'slow')
-        else:
-            if self.pos.distance(self.path.current_pt()) < self.waypoint_threshold:
-                self.path.inc_current_pt()
-            return self.seek(self.path.current_pt())
+    def cohesion(self, neighbours):
+        if not neighbours:
+            return Vector2D()
+        center = Vector2D()
+        for n in neighbours:
+            center += n.pos
+        center /= len(neighbours)
+        return self.seek(center)
+    
+    def separation(self, neighbours):
+        if not neighbours:
+            return Vector2D()
+        force = Vector2D()
+        count = 0
+        for n in neighbours:
+            dist = self.pos.distance(n.pos)
+            if dist < self.separation_distance and dist > 0:
+                away = self.pos - n.pos
+                away.normalise()
+                away /= dist
+                force += away
+                count += 1
+        if count > 0:
+            force /= count
+            force.normalise()
+            force *= self.max_speed
+        return force
+    
+    def alignment(self, neighbours):
+        if not neighbours:
+            return Vector2D()   
+        avg_heading = Vector2D()
+        for n in neighbours:
+            avg_heading += n.heading
+        avg_heading /= len(neighbours)
+        avg_heading.normalise()
+        avg_heading *= self.max_speed
+        return (avg_heading - self.vel)
+    
+    def flock(self, delta):
+        neighbours = self.get_neighbours()
+        cohesion_force = self.cohesion(neighbours) * self.w_cohesion
+        separation_force = self.separation(neighbours) * self.w_separation
+        alignment_force = self.alignment(neighbours) * self.w_alignment
+        wander_force = self.wander(delta) * self.w_wander
+        total = cohesion_force + separation_force + alignment_force + wander_force
+        return total

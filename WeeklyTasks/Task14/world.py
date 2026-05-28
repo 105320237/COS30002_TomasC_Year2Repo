@@ -36,7 +36,6 @@ class World(object):
         
         # Simulation entities
         self.agents = []
-        self.hunter = None # Placeholder for pursuit behaviour target
         
         # Target representation (a red star that agents usually seek/arrive at)
         self.target = pyglet.shapes.Star(
@@ -46,11 +45,30 @@ class World(object):
             batch=window.get_batch("main")
         )
 
+        self.weight_labels = {
+            'cohesion': pyglet.text.Label('Cohesion: 1.0', x=10, y=cy - 20, color=COLOUR_NAMES['WHITE'], font_size=12),
+            'separation': pyglet.text.Label('Separation: 1.5', x=10, y=cy - 40, color=COLOUR_NAMES['WHITE'], font_size=12),
+            'alignment': pyglet.text.Label('Alignment: 1.0', x=10, y=cy - 60, color=COLOUR_NAMES['WHITE'], font_size=12),
+            'wander': pyglet.text.Label('Wander: 0.5', x=10, y=cy - 80, color=COLOUR_NAMES['WHITE'], font_size=12),
+            'helper': pyglet.text.Label('Z/X: Cohesion  C/V: Separation  B/N: Alignment  M/,: Wander  F: Spawn  P: Pause', x=10, y=cy - 100, color=COLOUR_NAMES['GREY'], font_size=10)
+}
+
     def update(self, delta):
         """Advances the simulation by one tick."""
         if not self.paused:
             for agent in self.agents:
                 agent.update(delta)
+        
+        if self.agents:
+            a = self.agents[0]
+            self.weight_labels['cohesion'].text = f'Cohesion: {a.w_cohesion:.1f}'
+            self.weight_labels['separation'].text = f'Separation: {a.w_separation:.1f}'
+            self.weight_labels['alignment'].text = f'Alignment: {a.w_alignment:.1f}'
+            self.weight_labels['wander'].text = f'Wander: {a.w_wander:.1f}'
+    
+    def draw_labels(self):
+        for label in self.weight_labels.values():
+            label.draw()
 
     def wrap_around(self, pos):
         """Treats the world as a toroidal (wrap-around) space.
@@ -100,25 +118,31 @@ class World(object):
             self.target.y = y
     
     def input_keyboard(self, symbol, modifiers):
-        """Handles keyboard events (e.g., pausing, changing agent modes)."""
+        """Handles keyboard events."""
         if symbol == pyglet.window.key.P:
             self.paused = not self.paused
-        elif symbol == pyglet.window.key.A:
+        elif symbol == pyglet.window.key.F:
             self.agents.append(Agent(self))
-        elif symbol == pyglet.window.key.R:
-            for agent in self.agents:
-                agent.randomise_path()
-        elif symbol == pyglet.window.key.H:
-            if len(self.agents) > 0:
-                self.hunter = self.agents[0]
-        elif symbol == pyglet.window.key.M:
-            if len(self.agents) > 0:
-                modes = list(AGENT_MODES.values())
-                current = self.agents[0].mode
-                next_index = (modes.index(current) + 1) % len(modes)
-                self.agents[0].mode = modes[next_index]
-
         elif symbol in AGENT_MODES:
-            # Update all agents to the selected behaviour mode
-            for agent in self.agents[1: ]:
+            for agent in self.agents:
                 agent.mode = AGENT_MODES[symbol]
+        # Cohesion
+        elif symbol == pyglet.window.key.Z:
+            for agent in self.agents: agent.w_cohesion = max(0.0, agent.w_cohesion - 0.1)
+        elif symbol == pyglet.window.key.X:
+            for agent in self.agents: agent.w_cohesion = min(5.0, agent.w_cohesion + 0.1)
+        # Separation
+        elif symbol == pyglet.window.key.C:
+            for agent in self.agents: agent.w_separation = max(0.0, agent.w_separation - 0.1)
+        elif symbol == pyglet.window.key.V:
+            for agent in self.agents: agent.w_separation = min(5.0, agent.w_separation + 0.1)
+        # Alignment
+        elif symbol == pyglet.window.key.B:
+            for agent in self.agents: agent.w_alignment = max(0.0, agent.w_alignment - 0.1)
+        elif symbol == pyglet.window.key.N:
+            for agent in self.agents: agent.w_alignment = min(5.0, agent.w_alignment + 0.1)
+        # Wander
+        elif symbol == pyglet.window.key.M:
+            for agent in self.agents: agent.w_wander = max(0.0, agent.w_wander - 0.1)
+        elif symbol == pyglet.window.key.COMMA:
+            for agent in self.agents: agent.w_wander = min(5.0, agent.w_wander + 0.1)

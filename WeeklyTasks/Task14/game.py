@@ -27,9 +27,12 @@ class Game():
     def __init__(self):
         # Initialise the world based on the window size
         self.world = World(window.width, window.height)
-        
-        # Add a single agent to the world for the student to observe
-        self.world.agents.append(Agent(self.world))
+
+        for _ in range(15):
+            agent = Agent(self.world, scale=20.0, mass=1.0, mode='flock')
+            agent.color = 'AQUA'
+            agent._update_vehicle_color()
+            self.world.agents.append(agent)
         
         # Ensure the world is active upon startup
         self.world.paused = False

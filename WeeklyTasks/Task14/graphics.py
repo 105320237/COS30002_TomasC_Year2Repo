@@ -339,6 +339,9 @@ class GameWindow(pyglet.window.Window):
             self.fps_display.draw()
             for label in self.labels.values():
                 label.draw()
+            from game import game
+            if game and hasattr(game, 'world'):
+                game.world.draw_labels()
         
     def get_batch(self, batch_name="main"):
         return self.batches.get(batch_name, self.batches["main"])
