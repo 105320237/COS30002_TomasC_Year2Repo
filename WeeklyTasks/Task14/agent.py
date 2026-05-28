@@ -1,4 +1,9 @@
-"""
+"""Autonomous Agent Steering Logic.
+
+This module defines the Agent class, which implements various steering 
+behaviours such as Seek, Flee, Arrive, and placeholders for Pursuit, 
+Wander, and Path Following. It handles the physics integration (force -> 
+acceleration -> velocity -> position) and updates the graphical representation.
 
 Created by
     Clinton Woodward (2019)
@@ -25,8 +30,9 @@ AGENT_MODES = {
     pyglet.window.key._3: 'arrive_normal',
     pyglet.window.key._4: 'arrive_fast',
     pyglet.window.key._5: 'flee',
+    pyglet.window.key._6: 'pursuit',
+    pyglet.window.key._7: 'follow_path',
     pyglet.window.key._8: 'wander',
-    pyglet.window.key._0: 'hide',
 }
 
 class Agent(object):
@@ -58,12 +64,7 @@ class Agent(object):
         self.accel = Vector2D()
         self.max_speed = 20.0 * scale
         self.friction = 0.98
-        self.max_force = 100.0 * scale
-
-        self.wander_target = Vector2D(1, 0)
-        self.wander_dist = 2.0 * scale
-        self.wander_radius = 1.5 * scale
-        self.wander_jitter = 15.0
+        # self.max_force = 100.0 # Example limit
 
         # ---- Graphical Representation ----
         self.color = 'ORANGE'
@@ -73,7 +74,15 @@ class Agent(object):
             Point2D( 10,  0),
             Point2D(-10, -6)
         ]
-        self.create_vehicle()
+        
+        # Main vehicle primitive
+        self.vehicle = pyglet.shapes.Triangle(
+            self.pos.x + self.vehicle_shape[1].x, self.pos.y + self.vehicle_shape[1].y,
+            self.pos.x + self.vehicle_shape[0].x, self.pos.y + self.vehicle_shape[0].y,
+            self.pos.x + self.vehicle_shape[2].x, self.pos.y + self.vehicle_shape[2].y,
+            color=COLOUR_NAMES[self.color],
+            batch=window.get_batch("main")
+        )
 
         # ---- Debug/Info Visuals ----
         # Wander logic visuals (placeholders)
@@ -87,17 +96,18 @@ class Agent(object):
             ArrowLine(Vector2D(0,0), Vector2D(0,0), colour=COLOUR_NAMES['GREY'], batch=window.get_batch("info")),
             ArrowLine(Vector2D(0,0), Vector2D(0,0), colour=COLOUR_NAMES['GREY'], batch=window.get_batch("info")),
         ]
-        # Main vehicle primitive
-    def create_vehicle(self):
-        self.vehicle = pyglet.shapes.Triangle(
-            self.pos.x + self.vehicle_shape[1].x, self.pos.y + self.vehicle_shape[1].y,
-            self.pos.x + self.vehicle_shape[0].x, self.pos.y + self.vehicle_shape[0].y,
-            self.pos.x + self.vehicle_shape[2].x, self.pos.y + self.vehicle_shape[2].y,
-            color=COLOUR_NAMES[self.color],
-            batch=window.get_batch("main")
-        )
-    def update_vehicle_color(self):
-        self.create_vehicle()
+
+        ### STUDENT TODO: Initialise path and wander details here
+        self.path = Path()
+        self.randomise_path()
+        self.waypoint_threshold = 20.0
+
+        self.wander_target = Vector2D(1, 0)
+        self.wander_dist = 2.0 * scale
+        self.wander_radius = 1.5 * scale
+        self.wander_jitter = 15.0
+
+        self.max_force = 100.0 * scale
 
     def calculate(self, delta):
         """Calculates the accumulated steering force based on the current mode."""
@@ -114,10 +124,12 @@ class Agent(object):
             force = self.arrive(target_pos, 'fast')
         elif mode == 'flee':
             force = self.flee(target_pos)
+        elif mode == 'pursuit':
+            force = self.pursuit(self.world.hunter)
         elif mode == 'wander':
             force = self.wander(delta)
-        elif mode == 'hide':
-            force = self.hide()
+        elif mode == 'follow_path':
+            force = self.follow_path()
         else:
             force = Vector2D()
             
@@ -128,7 +140,7 @@ class Agent(object):
         """Updates the agent's physics and graphical representation."""
         # 1. Calculate steering force
         force = self.calculate(delta)
-        force.truncate(self.max_force)
+        
         # 2. Integrate physics: F = ma -> a = F/m
         self.accel = force / self.mass
         
@@ -171,6 +183,11 @@ class Agent(object):
     def speed(self):
         return self.vel.length()
     
+    def randomise_path(self):
+        cx, cy = self.world.cx, self.world.cy
+        margin = min(cx, cy) * (1/6)
+        self.path.create_random_path(5, margin, margin, cx - margin, cy - margin, looped=True)
+
     # ---- Steering Behaviour Implementations ----
 
     def seek(self, target_pos):
@@ -199,6 +216,17 @@ class Agent(object):
             return (desired_vel - self.vel)
         return Vector2D(0, 0)
 
+    def pursuit(self, evader):
+        """Predicts an evader's future position and seeks towards it."""
+        if evader is None:
+            return Vector2D()
+    
+        to_evader = evader.pos - self.pos
+        distance = to_evader.length()
+        prediction_time = distance / self.max_speed
+        future_pos = evader.pos + evader.vel * prediction_time
+        return self.seek(future_pos)
+
     def wander(self, delta):
             """Randomly jitters a projected circle to produce organic movement."""
             jitter = self.wander_jitter * delta
@@ -216,37 +244,12 @@ class Agent(object):
             self.info_wander_circle.y = circle_center.y
             self.info_wander_circle.radius = self.wander_radius
             return self.seek(world_target)
-    
-    def calculate_hiding_spots(self, hunter_pos, obstacles):
-        spots = []
-        for obs in obstacles:
-            obs_pos = obs['pos']
-            radius = obs['radius']
-            to_obs = obs_pos - hunter_pos
-            dist = to_obs.length()
-            if dist > 0:
-                direction = to_obs.get_normalised()
-                hide_pos = obs_pos + direction * (radius + 30.0)
-                spots.append(hide_pos)
-        return spots
-    
-    def find_best_hiding_spot(self, hunter_pos, obstacles):
-        spots = self.calculate_hiding_spots(hunter_pos, obstacles)
-        if not spots:
-            return None
-        best_spots = None
-        best_dist = float('inf')
-        for spot in spots:
-            d = self.pos.distance(spot)
-            if d < best_dist:
-                best_dist = d
-                best_spots = spot
-        return best_spots
-    
-    def hide(self):
-        if self.world.hunter is None:
-            return Vector2D()
-        best_spot = self.find_best_hiding_spot(self.world.hunter.pos, self.world.obstacles)
-        if best_spot:
-            return self.arrive(best_spot, 'normal')
-        return Vector2D()
+
+    def follow_path(self):
+        """Moves the agent along a predefined set of waypoints."""
+        if self.path.is_finished():
+            return self.arrive(self.path.current_pt(), 'slow')
+        else:
+            if self.pos.distance(self.path.current_pt()) < self.waypoint_threshold:
+                self.path.inc_current_pt()
+            return self.seek(self.path.current_pt())
